@@ -1,42 +1,67 @@
 #!/usr/bin/python3
 
-""" a script that reads stdin and retrieves specific information line by line"""
+""" A script that reads stdin and retrieves specific information line by line """
 
 import sys
+import signal
+from collections import defaultdict
 
+# Initialize metrics variables
+total_size = 0
+status_counts = defaultdict(int)
+line_count = 0
 
-def print_metrics(code, size):
-    """prints the retrieved information"""
-    print("File size: {:d}".format(size))
-    for i in sorted(code.keys()):
-        if code[i] != 0:
-            print("{}: {:d}".format(i, code[i]))
+# List of valid status codes to track
+valid_status_codes = [200, 301, 400, 401, 403, 404, 405, 500]
 
-accepted_code = {"200": 0, "301": 0, "400": 0, "401": 0, "403": 0, "404": 0, "405": 0, "500": 0}
+# Function to print metrics
+def print_metrics():
+    print(f"File size: {total_size}")
+    for code in sorted(valid_status_codes):
+        if status_counts[code] > 0:
+            print(f"{code}: {status_counts[code]}")
 
-count = 0
-size = 0
+# Signal handler for CTRL+C to print metrics and exit gracefully
+def handle_interrupt(signum, frame):
+    print_metrics()
+    sys.exit(0)
+
+# Register the signal handler
+signal.signal(signal.SIGINT, handle_interrupt)
 
 try:
+    # Main loop to read from stdin
     for line in sys.stdin:
-        if count != 0 and count % 10 == 0:
-            print_metrics(accepted_code, size)
+        parts = line.strip().split()
+        
+        # Validate line format (must have at least 2 parts for status code and file size)
+        if len(parts) < 2:
+            continue
 
-        parts = line.split()
-        count += 1
+        # Increment line count
+        line_count += 1
 
+        # Try to parse file size and status code
         try:
-            size += int(parts[-1])
-        except ValueError:
-            pass
+            file_size = int(parts[-1])          # last item
+            status_code = int(parts[-2])        # second last item
+            total_size += file_size             # add to total file size
+            
+            # Update status code count if it's a valid code
+            if status_code in valid_status_codes:
+                status_counts[status_code] += 1
+        except (ValueError, IndexError):
+            # Skip lines with unexpected format or data types
+            continue
 
-        try:
-            if parts[-2] in accepted_code:
-                accepted_code[parts[-2]] += 1
-        except IndexError:
-            pass
-    print_metrics(accepted_code, size)
+        # Print metrics every 10 lines
+        if line_count % 10 == 0:
+            print_metrics()
+
+    # Print final metrics after reading all lines
+    print_metrics()
 
 except KeyboardInterrupt:
-    print_metrics(accepted_code, size)
-    raise
+    # Handle keyboard interrupt gracefully if signal handler fails
+    print_metrics()
+    sys.exit(0)
